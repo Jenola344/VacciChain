@@ -1,4 +1,4 @@
-# 💉 VacciChain
+#  VacciChain
 
 > Blockchain-based vaccination records on Stellar — soulbound, verifiable, tamper-proof.
 
