@@ -1,11 +1,12 @@
 const express = require('express');
 const StellarSdk = require('@stellar/stellar-sdk');
 const { simulateContract } = require('../stellar/soroban');
+const { verifyLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
 // GET /verify/:wallet — public, no auth required
-router.get('/:wallet', async (req, res) => {
+router.get('/:wallet', verifyLimiter, async (req, res) => {
   const { wallet } = req.params;
 
   try {
