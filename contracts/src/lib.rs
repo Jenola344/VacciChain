@@ -35,20 +35,37 @@ impl VacciChainContract {
         Ok(())
     }
 
-    /// Admin: authorize a new issuer
-    pub fn add_issuer(env: Env, issuer: Address) {
+    /// Admin: authorize a new issuer with metadata
+    pub fn add_issuer(env: Env, issuer: Address, name: String, license: String, country: String) {
         let admin: Address = env.storage().persistent().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Issuer(issuer.clone()), &true);
+        
+        let record = IssuerRecord {
+            name,
+            license,
+            country,
+            authorized: true,
+        };
+        
+        env.storage().persistent().set(&DataKey::Issuer(issuer.clone()), &record);
         events::emit_issuer_added(&env, &issuer, &admin);
+    }
+
+    /// Public: get issuer metadata
+    pub fn get_issuer(env: Env, address: Address) -> Option<IssuerRecord> {
+        env.storage().persistent().get(&DataKey::Issuer(address))
     }
 
     /// Admin: revoke an issuer
     pub fn revoke_issuer(env: Env, issuer: Address) {
         let admin: Address = env.storage().persistent().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Issuer(issuer.clone()), &false);
-        events::emit_issuer_revoked(&env, &issuer, &admin);
+        
+        if let Some(mut record) = env.storage().persistent().get::<DataKey, IssuerRecord>(&DataKey::Issuer(issuer.clone())) {
+            record.authorized = false;
+            env.storage().persistent().set(&DataKey::Issuer(issuer.clone()), &record);
+            events::emit_issuer_revoked(&env, &issuer, &admin);
+        }
     }
 
     /// Issuer: mint a soulbound vaccination NFT
@@ -76,7 +93,8 @@ impl VacciChainContract {
     pub fn is_issuer(env: Env, address: Address) -> bool {
         env.storage()
             .persistent()
-            .get(&DataKey::Issuer(address))
+            .get::<DataKey, IssuerRecord>(&DataKey::Issuer(address))
+            .map(|r| r.authorized)
             .unwrap_or(false)
     }
 
@@ -138,8 +156,13 @@ mod tests {
         let issuer = Address::generate(&env);
         let patient = Address::generate(&env);
 
-        client.initialize(&admin).unwrap();
-        client.add_issuer(&issuer);
+        client.initialize(&admin);
+        client.add_issuer(
+            &issuer,
+            &String::from_str(&env, "General Hospital"),
+            &String::from_str(&env, "LIC-12345"),
+            &String::from_str(&env, "USA"),
+        );
 
         let token_id = client.mint_vaccination(
             &patient,
@@ -165,7 +188,7 @@ mod tests {
         let client = VacciChainContractClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
-        client.initialize(&admin).unwrap();
+        client.initialize(&admin);
 
         let from = Address::generate(&env);
         let to = Address::generate(&env);
@@ -207,8 +230,13 @@ mod tests {
         let issuer = Address::generate(&env);
         let patient = Address::generate(&env);
 
-        client.initialize(&admin).unwrap();
-        client.add_issuer(&issuer);
+        client.initialize(&admin);
+        client.add_issuer(
+            &issuer,
+            &String::from_str(&env, "General Hospital"),
+            &String::from_str(&env, "LIC-12345"),
+            &String::from_str(&env, "USA"),
+        );
 
         client.mint_vaccination(
             &patient,
@@ -235,7 +263,7 @@ mod tests {
         let client = VacciChainContractClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
-        client.initialize(&admin).unwrap();
+        client.initialize(&admin);
 
         let result = client.try_initialize(&admin);
         assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
@@ -252,13 +280,18 @@ mod tests {
         let admin = Address::generate(&env);
         let new_admin = Address::generate(&env);
 
-        client.initialize(&admin).unwrap();
-        client.propose_admin(&new_admin).unwrap();
-        client.accept_admin().unwrap();
+        client.initialize(&admin);
+        client.propose_admin(&new_admin);
+        client.accept_admin();
 
         // new_admin should now be admin — verify by calling add_issuer (only admin can)
         let issuer = Address::generate(&env);
-        client.add_issuer(&issuer);
+        client.add_issuer(
+            &issuer,
+            &String::from_str(&env, "General Hospital"),
+            &String::from_str(&env, "LIC-12345"),
+            &String::from_str(&env, "USA"),
+        );
     }
 
     #[test]
@@ -272,8 +305,8 @@ mod tests {
         let admin = Address::generate(&env);
         let new_admin = Address::generate(&env);
 
-        client.initialize(&admin).unwrap();
-        client.propose_admin(&new_admin).unwrap();
+        client.initialize(&admin);
+        client.propose_admin(&new_admin);
 
         // Advance ledger time past 24 hours
         env.ledger().with_mut(|l| l.timestamp += 86401);
