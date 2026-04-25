@@ -2,6 +2,7 @@ use soroban_sdk::{Env, Address, String, Vec};
 use crate::storage::{DataKey, VaccinationRecord, IssuerRecord};
 use crate::events;
 use crate::ContractError;
+use crate::validate_input_length;
 
 pub fn mint_vaccination(
     env: &Env,
@@ -10,6 +11,9 @@ pub fn mint_vaccination(
     date_administered: String,
     issuer: Address,
 ) -> Result<u64, ContractError> {
+    validate_input_length(&vaccine_name, "vaccine_name")?;
+    validate_input_length(&date_administered, "date_administered")?;
+
     // Require issuer auth
     issuer.require_auth();
 
